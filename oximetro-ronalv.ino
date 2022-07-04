@@ -1,7 +1,9 @@
+// CABECERAS PARA OLED
 #include <Arduino.h>
 #include <U8x8lib.h>
 U8X8_SSD1306_128X64_NONAME_HW_I2C u8x8(/* reset=*/ U8X8_PIN_NONE);
 
+// CABECERAS PARA TECLADO 4X3
 #include <SimpleKeypad.h>
 const byte nb_rows = 4;                         // four rows
 const byte nb_cols = 3;                         // four columns
@@ -11,9 +13,42 @@ char key_chars[nb_rows][nb_cols] = {            // The symbols of the keys
   {'7', '8', '9'},
   {'S', '0', 'B'}
 };
-byte rowPins[nb_rows] = {A0, A1, A2, A3};           // The pins where the rows are connected
-byte colPins[nb_cols] = {13, 12, 11};           // The pins where the columns are connected
+byte rowPins[nb_rows] = {15, 2, 0, 4};           // The pins where the rows are connected
+byte colPins[nb_cols] = {5, 18, 19};           // The pins where the columns are connected
 SimpleKeypad kp1((char*)key_chars, rowPins, colPins, nb_rows, nb_cols);   // New keypad called kp1
+
+// CABECERAS PARA SENSOR MAX30102
+#include <Wire.h>
+#include "MAX30105.h"
+#include "spo2_algorithm.h"
+
+MAX30105 particleSensor;
+#define MAX_BRIGHTNESS 255
+uint32_t irBuffer[100]; //infrared LED sensor data
+uint32_t redBuffer[100];  //red LED sensor data
+int32_t bufferLength; //data length
+int32_t spo2; //SPO2 value
+int8_t validSPO2; //indicator to show if the SPO2 calculation is valid
+int32_t heartRate; //heart rate value
+int8_t validHeartRate; //indicator to show if the heart rate calculation is valid
+
+// CABECERAS PARA RF95 LORAWAN CHIP
+#include "ttn.h"
+#include <nvs_flash.h>
+const char *appEui = "0000000000000000";// AppEUI (sometimes called JoinEUI)
+const char *devEui = "70B3D57ED0052BB5";// DevEUI
+const char *appKey = "48C61C5805678E732EFC9C6E68441E86";// AppKey
+#define TTN_SPI_HOST HSPI_HOST
+#define TTN_SPI_DMA_CHAN 1
+#define TTN_PIN_SPI_SCLK 14
+#define TTN_PIN_SPI_MOSI 32
+#define TTN_PIN_SPI_MISO 25
+#define TTN_PIN_NSS 33
+#define TTN_PIN_RXTX TTN_NOT_CONNECTED
+#define TTN_PIN_RST 12
+#define TTN_PIN_DIO0 34
+#define TTN_PIN_DIO1 35
+bool joined = false;
 
 // DATOS
 char dato1[8] = {0};
@@ -27,32 +62,137 @@ int dato8 = 0;
 int dato9 = 0;
 int dato10 = 0;
 int dato11 = 0;
+int dato12 = 0;
+char datos[200] = {0};
 
+// FUNCIONES
 void setup() {
-  Serial.begin(9600);
-  // put your setup code here, to run once:
+  Serial.begin(115200);
+
+  // setup para oled
   u8x8.begin();
   u8x8.setPowerSave(0);
 
+  // setup para max30102
+  if (!particleSensor.begin(Wire, I2C_SPEED_FAST)) //Use default I2C port, 400kHz speed
+  {
+    Serial.println(F("MAX30105 was not found. Please check wiring/power."));
+    while (1);
+  }
+
+  byte ledBrightness = 60; //Options: 0=Off to 255=50mA
+  byte sampleAverage = 4; //Options: 1, 2, 4, 8, 16, 32
+  byte ledMode = 2; //Options: 1 = Red only, 2 = Red + IR, 3 = Red + IR + Green
+  byte sampleRate = 100; //Options: 50, 100, 200, 400, 800, 1000, 1600, 3200
+  int pulseWidth = 411; //Options: 69, 118, 215, 411
+  int adcRange = 4096; //Options: 2048, 4096, 8192, 16384
+  particleSensor.setup(ledBrightness, sampleAverage, ledMode, sampleRate, pulseWidth, adcRange); //Configure sensor with these settings
+
+  // setup para RF95 LORAWAN CHIP
+  lora_init();
 }
 
 void loop() {
-
-  instruccion1();
-  instruccion2();
-  instruccion3();
-  instruccion4();
-  instruccion5();
-  instruccion6();
-  instruccion7();
-  instruccion8();
-  instruccion9();
-  instruccion10();
-  //instruccion11();
+  /*
+    instruccion1();
+    instruccion2();
+    instruccion3();
+    instruccion4();
+    instruccion5();
+    instruccion6();
+    instruccion7();
+    instruccion8();
+    instruccion9();
+    instruccion10();*/
+  instruccion11();
+  instruccion12();
+  instruccion13();
   printDatos();
+
+  instruccion14();
   delay(5000);
 
 }
+
+void messageReceived(const uint8_t *message, size_t length, ttn_port_t port)
+{
+  printf("Message of %d bytes received on port %d:", length, port);
+  for (int i = 0; i < length; i++)
+    printf(" %02x", message[i]);
+  printf("\n");
+}
+
+extern "C" void lora_init()
+{
+  esp_err_t err;
+
+  // Initialize the GPIO ISR handler service
+  err = gpio_install_isr_service(ESP_INTR_FLAG_IRAM);
+  ESP_ERROR_CHECK(err);
+
+  // Initialize the NVS (non-volatile storage) for saving and restoring the keys
+  err = nvs_flash_init();
+  ESP_ERROR_CHECK(err);
+
+  // Initialize SPI bus
+  spi_bus_config_t spi_bus_config = { -1};
+  spi_bus_config.miso_io_num = TTN_PIN_SPI_MISO;
+  spi_bus_config.mosi_io_num = TTN_PIN_SPI_MOSI;
+  spi_bus_config.sclk_io_num = TTN_PIN_SPI_SCLK;
+  spi_bus_config.quadwp_io_num = -1;
+  spi_bus_config.quadhd_io_num = -1;
+  spi_bus_config.max_transfer_sz = 0;
+  spi_bus_config.intr_flags = 0;
+  spi_bus_config.flags = 0;
+
+  err = spi_bus_initialize(TTN_SPI_HOST, &spi_bus_config, TTN_SPI_DMA_CHAN);
+  ESP_ERROR_CHECK(err);
+
+  // Initialize TTN
+  ttn_init();
+
+  // Configure the SX127x pins
+  ttn_configure_pins(TTN_SPI_HOST, TTN_PIN_NSS, TTN_PIN_RXTX, TTN_PIN_RST, TTN_PIN_DIO0, TTN_PIN_DIO1);
+
+  // The below line can be commented after the first run as the data is saved in NVS
+  ttn_provision(devEui, appEui, appKey);
+
+  // Register callback for received messages
+  ttn_on_message(messageReceived);
+
+}
+bool lora_join()
+{
+  if (joined)
+    return true;
+
+  ttn_reset();
+  printf("Joining.......\n");
+  if ( ttn_join_provisioned())
+  {
+    joined = true;
+    printf("Joined.\n");
+    printf("    appEui:%s\n", appEui);
+    printf("    devEui:%s\n", devEui);
+    printf("    appKey:%s\n", appKey);
+    return true;
+  }
+
+  printf("Join failed.\n");
+  return false;
+}
+
+bool lora_transmit(uint8_t *data, int size)
+{
+  printf("Sending LoRa message:%s\n", (char*)data);
+  ttn_response_code_t res = ttn_transmit_message(data, size, 1, false);
+  printf(res == TTN_SUCCESSFUL_TRANSMISSION ? "Message sent.\n" : "Transmission failed.\n");
+  bool result = (res == TTN_SUCCESSFUL_TRANSMISSION) ? true : false;
+  if (result == false)
+    joined = false;
+  return result;
+}
+
 void printString(char* str, int len) {
   for (int i = 0; i < len; i++) {
     Serial.print(str[i]);
@@ -82,6 +222,97 @@ void printDatos() {
   Serial.println(dato9);
   Serial.print("Dato10 (dolor): ");
   Serial.println(dato10);
+  Serial.print("Dato11 (SPO2): ");
+  Serial.println(dato11);
+  Serial.print("Dato12 (hemoglobina): ");
+  Serial.println(dato12);
+}
+int leer_spo2_de_max30102()
+{
+  while (1) {
+    memset(irBuffer, 0, 100);
+    memset(redBuffer, 0, 100);
+    /*
+      while (particleSensor.available() == false) //do we have new data?
+      {
+      Serial.println("Coloque dedo en el sensor");
+      delay(1000);
+      }
+    */
+    bufferLength = 100; //buffer length of 100 stores 4 seconds of samples running at 25sps
+
+    //read the first 100 samples, and determine the signal range
+    for (int i = 0 ; i < bufferLength ; i++)
+    {
+
+      while (particleSensor.available() == false) //do we have new data?
+        particleSensor.check(); //Check the sensor for new data
+
+      uint32_t redval = particleSensor.getRed();
+      uint32_t irval = particleSensor.getIR();
+
+      if ( redval < 10000 || irval < 10000)
+      {
+        i--;
+        continue;
+      }
+
+      redBuffer[i] = redval;
+      irBuffer[i] = irval;
+      particleSensor.nextSample(); //We're finished with this sample so move to next sample
+
+      Serial.print(F("red="));
+      Serial.print(redBuffer[i], DEC);
+      Serial.print(F(", ir="));
+      Serial.println(irBuffer[i], DEC);
+    }
+
+    //Continuously taking samples from MAX30102.  Heart rate and SpO2 are calculated every 1 second
+
+    //dumping the first 25 sets of samples in the memory and shift the last 75 sets of samples to the top
+    for (byte i = 25; i < 100; i++)
+    {
+      redBuffer[i - 25] = redBuffer[i];
+      irBuffer[i - 25] = irBuffer[i];
+    }
+
+    //take 25 sets of samples before calculating the heart rate.
+    for (byte i = 75; i < 100; i++)
+    {
+      while (particleSensor.available() == false) //do we have new data?
+        particleSensor.check(); //Check the sensor for new data
+
+      uint32_t redval = particleSensor.getRed();
+      uint32_t irval = particleSensor.getIR();
+
+      if ( redval < 10000 || irval < 10000)
+      {
+        i--;
+        continue;
+      }
+
+      redBuffer[i] = redval;
+      irBuffer[i] = irval;
+      particleSensor.nextSample(); //We're finished with this sample so move to next sample
+    }
+
+    //After gathering 25 new samples recalculate HR and SP02
+    maxim_heart_rate_and_oxygen_saturation(irBuffer, bufferLength, redBuffer, &spo2, &validSPO2, &heartRate, &validHeartRate);
+    Serial.print(F(", HRvalid="));
+    Serial.print(validHeartRate, DEC);
+
+    Serial.print(F(", SPO2="));
+    Serial.print(spo2, DEC);
+
+    Serial.print(F(", SPO2Valid="));
+    Serial.println(validSPO2, DEC);
+
+
+    if (validHeartRate == 1 && validSPO2 == 1) {
+      return spo2;
+    }
+    Serial.println("SPO2 invalido. Repetir proceso.");
+  }
 }
 void instruccion1() {
   memset(dato1, 0, 8);
@@ -874,4 +1105,74 @@ printDolor:
     Serial.println(dato10);
     break;
   }
+}
+void instruccion11() {
+  dato11 = 0;
+  while (1) {
+    // LIMPIAR PANTALLA
+    u8x8.clearDisplay();
+
+    // IMPRIMIR TITULO
+    u8x8.setFont(u8x8_font_chroma48medium8_r);
+    u8x8.drawString(0, 0, "Porfavor coloque");
+    u8x8.drawString(0, 1, "su indice dere");
+    u8x8.drawString(0, 2, "cho en el SENSOR");
+    u8x8.drawString(0, 3, "durante 10 segun");
+    u8x8.drawString(0, 4, "dos");
+
+    // LEER SPO2 DEL SENSOR MAX30102
+    int spo2 = leer_spo2_de_max30102();
+
+    char stringSpo2[30] = {0};
+    sprintf(stringSpo2, "%i", spo2);
+    u8x8.setFont(u8x8_font_px437wyse700b_2x2_r);
+    u8x8.drawString(5, 6, stringSpo2);
+    Serial.println(spo2);
+
+    // GUARDAR VALOR DE SPO2 EN DATO 11
+    dato11 = spo2;
+    Serial.print("Dato 11 (SPO2): ");
+    Serial.println(dato11);
+    break;
+  }
+}
+void instruccion12() {
+  int hemoglobina = 110;
+  dato12 = hemoglobina;
+  Serial.print("Dato 12 (hemoglobina): ");
+  Serial.println(dato12);
+}
+void instruccion13() {
+  // IMPRIMIR TITULO
+  u8x8.setFont(u8x8_font_chroma48medium8_r);
+  u8x8.drawString(0, 0, "Test de hemo");
+  u8x8.drawString(0, 1, "globina satisfac");
+  u8x8.drawString(0, 2, "torio, muchas ");
+  u8x8.drawString(0, 3, "gracias");
+  delay(3000);
+}
+void instruccion14() {
+  // EMPAQUETAR DATOS
+  memset(datos, 0, 200);
+  snprintf(datos, 200, "%i;%i;%i;%i;%i;%i;"
+           "%i;%i;%i;%i;%i;%i\n",
+           dato1, dato2, dato3, dato4,
+           dato5, dato6, dato7, dato8,
+           dato9, dato10, dato11, dato12);
+
+  // CONECTAR CON GATEWAY
+join:
+  while ( !lora_join() ) {
+    printf("Wait 5 seconds ...\n");
+    delay(5000);
+  }
+
+  // TRASMITIR DATOS
+  bool tx_success = lora_transmit((uint8_t*)datos, strlen(datos));
+  if (!tx_success) {
+    printf("Wait 5 seconds ...\n");
+    delay(5000);
+    goto join;
+  }
+
 }
