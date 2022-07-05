@@ -1,0 +1,2 @@
+Convertir modelo tflite a c++
+xxd -i converted_model.tflite > model_data.cc

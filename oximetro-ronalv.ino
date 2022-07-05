@@ -50,6 +50,25 @@ const char *appKey = "48C61C5805678E732EFC9C6E68441E86";// AppKey
 #define TTN_PIN_DIO1 35
 bool joined = false;
 
+// CABECERAS PARA TENSORFLOW LITE
+#include <TensorFlowLite_ESP32.h>
+#include "tensorflow/lite/micro/all_ops_resolver.h"
+#include "tensorflow/lite/micro/micro_error_reporter.h"
+#include "tensorflow/lite/micro/micro_interpreter.h"
+#include "tensorflow/lite/micro/system_setup.h"
+#include "tensorflow/lite/schema/schema_generated.h"
+#include "model.h"
+namespace
+{
+tflite::ErrorReporter *error_reporter = nullptr;
+const tflite::Model *model = nullptr;
+tflite::MicroInterpreter *interpreter = nullptr;
+TfLiteTensor *input = nullptr;
+TfLiteTensor *output = nullptr;
+constexpr int kTensorArenaSize = 2000;
+uint8_t tensor_arena[kTensorArenaSize];
+}
+
 // DATOS
 char dato1[8] = {0};
 int dato2 = 0;
@@ -62,7 +81,7 @@ int dato8 = 0;
 int dato9 = 0;
 int dato10 = 0;
 int dato11 = 0;
-int dato12 = 0;
+float dato12 = 0;
 char datos[200] = {0};
 
 // FUNCIONES
@@ -90,6 +109,40 @@ void setup() {
 
   // setup para RF95 LORAWAN CHIP
   lora_init();
+
+  // setup para tensorflow lite
+  // Set up logging.
+  static tflite::MicroErrorReporter micro_error_reporter;
+  error_reporter = &micro_error_reporter;
+
+  // Map the model into a usable data structure.
+  model = tflite::GetModel(g_model);
+  if (model->version() != TFLITE_SCHEMA_VERSION)
+  {
+    TF_LITE_REPORT_ERROR(error_reporter,
+                         "Model provided is schema version %d not equal "
+                         "to supported version %d.",
+                         model->version(), TFLITE_SCHEMA_VERSION);
+    while (1);
+  }
+  static tflite::AllOpsResolver resolver;
+
+  // Build an interpreter to run the model with.
+  static tflite::MicroInterpreter static_interpreter(
+    model, resolver, tensor_arena, kTensorArenaSize, error_reporter);
+  interpreter = &static_interpreter;
+
+  // Allocate memory from the tensor_arena for the model's tensors.
+  TfLiteStatus allocate_status = interpreter->AllocateTensors();
+  if (allocate_status != kTfLiteOk)
+  {
+    TF_LITE_REPORT_ERROR(error_reporter, "AllocateTensors() failed");
+    return;
+  }
+
+  // Obtain pointers to the model's input and output tensors.
+  input = interpreter->input(0);
+  output = interpreter->output(0);
 }
 
 void loop() {
@@ -109,6 +162,7 @@ void loop() {
   instruccion13();
   printDatos();
 
+  // tx lorawan
   instruccion14();
   delay(5000);
 
@@ -1133,46 +1187,126 @@ void instruccion11() {
     dato11 = spo2;
     Serial.print("Dato 11 (SPO2): ");
     Serial.println(dato11);
+
+    delay(5000);
     break;
   }
 }
 void instruccion12() {
-  int hemoglobina = 110;
-  dato12 = hemoglobina;
-  Serial.print("Dato 12 (hemoglobina): ");
-  Serial.println(dato12);
-}
-void instruccion13() {
+  dato12 = 0.0;
+
+  // Establecer valor de entrada (SPO2)
+  input->data.f[0] = (float)dato11;
+
+  // Run inference, and report any error
+  TfLiteStatus invoke_status = interpreter->Invoke();
+  if (invoke_status != kTfLiteOk)
+  {
+    printf("Inferencia error\n");
+    return;
+  }
+
+  // Extraer resultado
+  float hemoglobina = output->data.f[0];
+
+  // LIMPIAR PANTALLA
+  u8x8.clearDisplay();
+
   // IMPRIMIR TITULO
   u8x8.setFont(u8x8_font_chroma48medium8_r);
-  u8x8.drawString(0, 0, "Test de hemo");
-  u8x8.drawString(0, 1, "globina satisfac");
-  u8x8.drawString(0, 2, "torio, muchas ");
-  u8x8.drawString(0, 3, "gracias");
-  delay(3000);
+  u8x8.drawString(2, 1, "Hemoglobina");
+
+  // IMPRIMIR VALOR DE HEMOGLOBINA
+  char stringHg[30] = {0};
+  sprintf(stringHg, "%.2f", hemoglobina);
+  u8x8.setFont(u8x8_font_px437wyse700b_2x2_r);
+  u8x8.drawString(3, 5, stringHg);
+  Serial.println(hemoglobina);
+
+  // Guardar resultado
+  dato12 = hemoglobina;
+
+  delay(5000);
+}
+void instruccion13() {
+  // LIMPIAR PANTALLA
+  u8x8.clearDisplay();
+
+  // IMPRIMIR TITULO
+  u8x8.setFont(u8x8_font_chroma48medium8_r);
+  u8x8.drawString(0, 2, "Test de hemo");
+  u8x8.drawString(0, 3, "globina satisfac");
+  u8x8.drawString(0, 4, "torio, muchas ");
+  u8x8.drawString(0, 5, "gracias");
+  delay(5000);
 }
 void instruccion14() {
   // EMPAQUETAR DATOS
   memset(datos, 0, 200);
   snprintf(datos, 200, "%i;%i;%i;%i;%i;%i;"
-           "%i;%i;%i;%i;%i;%i\n",
+           "%i;%i;%i;%i;%i;%f\n",
            dato1, dato2, dato3, dato4,
            dato5, dato6, dato7, dato8,
            dato9, dato10, dato11, dato12);
 
   // CONECTAR CON GATEWAY
 join:
-  while ( !lora_join() ) {
-    printf("Wait 5 seconds ...\n");
-    delay(5000);
-  }
 
-  // TRASMITIR DATOS
-  bool tx_success = lora_transmit((uint8_t*)datos, strlen(datos));
-  if (!tx_success) {
+  // LIMPIAR PANTALLA
+  u8x8.clearDisplay();
+  // IMPRIMIR TITULO
+  u8x8.setFont(u8x8_font_px437wyse700b_2x2_r);
+  u8x8.drawString(0, 3, "JOINING");
+
+  if ( !lora_join() ) {
+    // LIMPIAR PANTALLA
+    u8x8.clearDisplay();
+    // IMPRIMIR TITULO
+    u8x8.setFont(u8x8_font_px437wyse700b_2x2_r);
+    u8x8.drawString(0, 2, "ERROR:");
+    u8x8.drawString(0, 4, "ESPERE 5");
+    u8x8.drawString(0, 6, "SEGUNDOS");
+
     printf("Wait 5 seconds ...\n");
     delay(5000);
     goto join;
   }
 
+  // LIMPIAR PANTALLA
+  u8x8.clearDisplay();
+  // IMPRIMIR TITULO
+  u8x8.setFont(u8x8_font_px437wyse700b_2x2_r);
+  u8x8.drawString(3, 3, "JOINED");
+
+  delay(2000);
+
+  // LIMPIAR PANTALLA
+  u8x8.clearDisplay();
+  // IMPRIMIR TITULO
+  u8x8.setFont(u8x8_font_px437wyse700b_2x2_r);
+  u8x8.drawString(0, 3, "ENVIANDO");
+
+  // TRASMITIR DATOS
+  bool tx_success = lora_transmit((uint8_t*)datos, strlen(datos));
+  if (!tx_success) {
+    // LIMPIAR PANTALLA
+    u8x8.clearDisplay();
+    // IMPRIMIR TITULO
+    u8x8.setFont(u8x8_font_px437wyse700b_2x2_r);
+    u8x8.drawString(0, 2, "ERROR:");
+    u8x8.drawString(0, 4, "ESPERE 5");
+    u8x8.drawString(0, 6, "SEGUNDOS");
+
+    printf("Wait 5 seconds ...\n");
+    delay(5000);
+    goto join;
+  }
+
+  // LIMPIAR PANTALLA
+  u8x8.clearDisplay();
+  // IMPRIMIR TITULO
+  u8x8.setFont(u8x8_font_px437wyse700b_2x2_r);
+  u8x8.drawString(3, 3, "ENVIADO");
+
+  delay(2000);
 }
