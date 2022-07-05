@@ -146,17 +146,17 @@ void setup() {
 }
 
 void loop() {
-  /*
-    instruccion1();
-    instruccion2();
-    instruccion3();
-    instruccion4();
-    instruccion5();
-    instruccion6();
-    instruccion7();
-    instruccion8();
-    instruccion9();
-    instruccion10();*/
+
+  instruccion1();
+  instruccion2();
+  instruccion3();
+  instruccion4();
+  instruccion5();
+  instruccion6();
+  instruccion7();
+  instruccion8();
+  instruccion9();
+  instruccion10();
   instruccion11();
   instruccion12();
   instruccion13();
@@ -386,6 +386,7 @@ void instruccion1() {
     int len = 0;
     bool stop = false;
     while (1) {
+      vTaskDelay(1);
       char keypressed = kp1.getKey();
       if (!keypressed)                                     // If getKey returned any key
         continue;
@@ -456,6 +457,7 @@ void instruccion2() {
     int sexo = 0;
 
     while (1) {
+      vTaskDelay(1);
       char keypressed = kp1.getKey();
       if (!keypressed)                                     // If getKey returned any key
         continue;
@@ -493,6 +495,7 @@ void instruccion3() {
     int len = 0;
     bool stop = false;
     while (1) {
+      vTaskDelay(1);
       char keypressed = kp1.getKey();
       if (!keypressed)                                     // If getKey returned any key
         continue;
@@ -577,6 +580,7 @@ void instruccion4() {
     int len = 0;
     bool stop = false;
     while (1) {
+      vTaskDelay(1);
       char keypressed = kp1.getKey();
       if (!keypressed)                                     // If getKey returned any key
         continue;
@@ -664,6 +668,7 @@ void instruccion5() {
     int len = 0;
     bool stop = false;
     while (1) {
+      vTaskDelay(1);
       char keypressed = kp1.getKey();
       if (!keypressed)                                     // If getKey returned any key
         continue;
@@ -752,6 +757,7 @@ void instruccion6() {
     int len = 0;
     bool stop = false;
     while (1) {
+      vTaskDelay(1);
       char keypressed = kp1.getKey();
       if (!keypressed)                               // If getKey returned any key
         continue;
@@ -838,6 +844,7 @@ void instruccion7() {
     int len = 0;
     bool stop = false;
     while (1) {
+      vTaskDelay(1);
       char keypressed = kp1.getKey();
       if (!keypressed)                                     // If getKey returned any key
         continue;
@@ -924,6 +931,7 @@ void instruccion8() {
     int len = 0;
     bool stop = false;
     while (1) {
+      vTaskDelay(1);
       char keypressed = kp1.getKey();
       if (!keypressed)                                     // If getKey returned any key
         continue;
@@ -1010,6 +1018,7 @@ void instruccion9() {
     int len = 0;
     bool stop = false;
     while (1) {
+      vTaskDelay(1);
       char keypressed = kp1.getKey();
       if (!keypressed)                                     // If getKey returned any key
         continue;
@@ -1096,6 +1105,7 @@ void instruccion10() {
     int len = 0;
     bool stop = false;
     while (1) {
+      vTaskDelay(1);
       char keypressed = kp1.getKey();
       if (!keypressed)                                     // If getKey returned any key
         continue;
@@ -1243,7 +1253,7 @@ void instruccion13() {
 void instruccion14() {
   // EMPAQUETAR DATOS
   memset(datos, 0, 200);
-  snprintf(datos, 200, "%i;%i;%i;%i;%i;%i;"
+  snprintf(datos, 200, "%s;%i;%i;%i;%i;%i;"
            "%i;%i;%i;%i;%i;%f\n",
            dato1, dato2, dato3, dato4,
            dato5, dato6, dato7, dato8,
@@ -1276,7 +1286,7 @@ join:
   u8x8.clearDisplay();
   // IMPRIMIR TITULO
   u8x8.setFont(u8x8_font_px437wyse700b_2x2_r);
-  u8x8.drawString(3, 3, "JOINED");
+  u8x8.drawString(1, 3, "JOINED");
 
   delay(2000);
 
@@ -1306,7 +1316,7 @@ join:
   u8x8.clearDisplay();
   // IMPRIMIR TITULO
   u8x8.setFont(u8x8_font_px437wyse700b_2x2_r);
-  u8x8.drawString(3, 3, "ENVIADO");
+  u8x8.drawString(0, 3, "ENVIADO");
 
   delay(2000);
 }
