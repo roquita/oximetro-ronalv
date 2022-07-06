@@ -156,7 +156,7 @@ void loop() {
   instruccion7();
   instruccion8();
   instruccion9();
-  instruccion10();
+  instruccion10();  
   instruccion11();
   instruccion12();
   instruccion13();
