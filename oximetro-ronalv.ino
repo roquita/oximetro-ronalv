@@ -70,7 +70,7 @@ uint8_t tensor_arena[kTensorArenaSize];
 }
 
 // DATOS
-char dato1[8] = {0};
+char dato1[9] = {0};
 int dato2 = 0;
 int dato3 = 0;
 int dato4 = 0;
@@ -156,7 +156,7 @@ void loop() {
   instruccion7();
   instruccion8();
   instruccion9();
-  instruccion10();  
+  instruccion10();
   instruccion11();
   instruccion12();
   instruccion13();
@@ -369,7 +369,7 @@ int leer_spo2_de_max30102()
   }
 }
 void instruccion1() {
-  memset(dato1, 0, 8);
+  memset(dato1, 0, 9);
   while (1) {
     // LIMPIAR PANTALLA
     u8x8.clearDisplay();
@@ -380,7 +380,7 @@ void instruccion1() {
     u8x8.drawString(0, 1, " y presione SI");
 
     // ACUMULAR DIGITOS DE DNI HASTA RECIBIR TECLA "S"
-    char dni[8] = {0};
+    char dni[9] = {0};
     char keypressed;
     int index = 0;
     int len = 0;
@@ -405,8 +405,8 @@ void instruccion1() {
           index = 0;
         if (len < 0)
           len = 0;
-        if (len == 6)
-          index = 6;
+        if (len == 7)
+          index = 7;
         dni[index] = 0;
         goto printdni;
       }
@@ -414,27 +414,28 @@ void instruccion1() {
       dni[index] = keypressed;
       index++;
       len++;
-      if (index > 6)
-        index = 6;
-      if (len > 7)
-        len = 7;
+      if (index > 7)
+        index = 7;
+      if (len > 8)
+        len = 8;
 
 printdni:
       char stringdni[30] = {0};
-      sprintf(stringdni, " % 7s", dni);
-      u8x8.setFont(u8x8_font_px437wyse700b_2x2_r);
-      u8x8.drawString(0, 4, stringdni);
+      sprintf(stringdni, " % 8s", dni);
+      //u8x8.setFont(u8x8_font_px437wyse700b_2x2_r);
+      u8x8.setFont(u8x8_font_pxplustandynewtv_u);
+      u8x8.drawString(3, 4, stringdni);
       printString(dni, len);
       if (stop == true)
         break;
     }
 
-    // VERIFICAR DNI CON 7 DIGITOS
-    if ( len != 7 )
+    // VERIFICAR DNI CON 8 DIGITOS
+    if ( len != 8 )
       continue;
 
     // GUARDAR DNI EN DATO 1
-    memcpy(dato1, dni, 8);
+    memcpy(dato1, dni, 9);
     Serial.print("Dato 1 (DNI): ");
     printString(dato1, strlen(dato1));
     break;
@@ -1258,6 +1259,7 @@ void instruccion14() {
            dato1, dato2, dato3, dato4,
            dato5, dato6, dato7, dato8,
            dato9, dato10, dato11, dato12);
+  printString(datos, strlen(datos));
 
   // CONECTAR CON GATEWAY
 join:
